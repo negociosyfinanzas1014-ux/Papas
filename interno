@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistente de Negocios - Gestión Interna</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            margin-top: 20px;
+        }
+        .panel {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        .chat-panel {
+            flex: 1;
+            min-height: 700px;
+        }
+        .data-panel {
+            flex: 1;
+            min-width: 400px;
+        }
+        .message-area {
+            height: 300px;
+            overflow-y: auto;
+            background-color: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .product-list {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+        .tab-btn.active {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Panel Izquierdo: Chatbot Generador de Respuestas -->
+        <div class="panel chat-panel">
+            <h2 class="text-2xl font-bold mb-4 text-indigo-600">Generador de Respuestas (Asistente IA)</h2>
+            <p class="text-sm text-gray-500 mb-4">La IA usará tu inventario guardado para responder preguntas sobre precios o redactar mensajes a clientes.</p>
+
+            <div id="auth-status" class="mb-4 p-2 text-sm rounded-lg bg-yellow-100 text-yellow-700">
+                Estado: Conectando...
+            </div>
+            
+            <div class="mb-4">
+                <label for="user-prompt" class="block text-sm font-medium text-gray-700 mb-1">Tu Mensaje o Consulta:</label>
+                <textarea id="user-prompt" rows="4" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 'El cliente preguntó por la Taza Deluxe. ¿Cuál es su precio? Responde amablemente.'"></textarea>
+            </div>
+
+            <button id="generate-response-btn" class="w-full bg-indigo-500 text-white font-semibold py-2 rounded-lg hover:bg-indigo-600 transition disabled:opacity-50" onclick="generateResponse()">
+                Generar Respuesta
+            </button>
+            
+            <div id="loading-indicator" class="hidden text-center mt-4">
+                <div class="animate-spin inline-block w-6 h-6 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+                <p class="text-indigo-600 mt-2">Generando respuesta...</p>
+            </div>
+
+            <div class="mt-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Respuesta de la IA:</label>
+                <div id="ia-response-area" class="message-area border border-gray-200">
+                    <!-- Contenido generado por la IA -->
+                    <p class="text-gray-500">La respuesta generada aparecerá aquí.</p>
+                </div>
+                <button id="copy-btn" class="w-full bg-gray-200 text-gray-700 font-semibold py-2 mt-2 rounded-lg hover:bg-gray-300 transition disabled:opacity-50" onclick="copyToClipboard()">
+                    Copiar Respuesta
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Gestor de Datos (Inventario/Pedidos) -->
+        <div class="panel data-panel">
+            <h2 class="text-2xl font-bold mb-4 text-indigo-600">Gestor de Datos</h2>
+
+            <!-- Tabs -->
+            <div class="flex border-b mb-4">
+                <button id="tab-inventory" class="tab-btn active px-4 py-2 text-sm font-medium rounded-t-lg" onclick="showTab('inventory')">Inventario (Precios)</button>
+                <button id="tab-orders" class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg" onclick="showTab('orders')">Pedidos de Clientes</button>
+            </div>
+
+            <!-- Contenido del Inventario -->
+            <div id="content-inventory">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Añadir Producto</h3>
+                <div class="space-y-3 mb-6 p-4 border rounded-lg bg-gray-50">
+                    <div>
+                        <label for="product-name" class="block text-xs font-medium text-gray-600">Nombre Exacto del Producto:</label>
+                        <input type="text" id="product-name" class="w-full p-2 border border-gray-300 rounded-md" placeholder="Taza Cerámica Deluxe">
+                    </div>
+                    <div>
+                        <label for="product-price" class="block text-xs font-medium text-gray-600">Precio (o Detalle Clave):</label>
+                        <input type="text" id="product-price" class="w-full p-2 border border-gray-300 rounded-md" placeholder="$18.50 o 'Agotado'">
+                    </div>
+                    <button class="w-full bg-green-500 text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition" onclick="addProduct()">
+                        Guardar Producto
+                    </button>
+                </div>
+
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Inventario Actual</h3>
+                <div id="product-list" class="product-list space-y-2">
+                    <p class="text-center text-gray-500 p-4" id="inventory-status">Cargando productos...</p>
+                    <!-- Los productos se insertarán aquí -->
+                </div>
+            </div>
+
+            <!-- Contenido de Pedidos -->
+            <div id="content-orders" class="hidden">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Pedidos Recibidos (Clientes)</h3>
+                <div id="order-list" class="product-list space-y-4">
+                    <p class="text-center text-gray-500 p-4" id="order-status">Cargando pedidos...</p>
+                    <!-- Los pedidos se insertarán aquí -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de Firebase y Lógica de la Aplicación -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, setDoc, doc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuración de logging de Firebase para ayudar con la depuración
+        setLogLevel('Debug');
+
+        // Variables Globales necesarias para la conexión del entorno
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const apiKey = ""; 
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        
+        let localProductList = [];
+        let db, auth;
+        let userId = '';
+
+        // Inicialización de Firebase
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            console.log("Firebase inicializado con éxito.");
+        } catch (error) {
+            console.error("Error al inicializar Firebase:", error);
+            document.getElementById('auth-status').textContent = 'Error: No se pudo conectar a Firebase.';
+        }
+        
+        // --- RUTAS DE FIRESTORE (PÚBLICAS para que el chatbot de cliente las lea) ---
+
+        function getProductsCollectionPath() {
+            return `artifacts/${appId}/public/data/inventory_products`;
+        }
+
+        function getOrdersCollectionPath() {
+            return `artifacts/${appId}/public/data/client_orders`;
+        }
+
+        // --- LÓGICA DE AUTENTICACIÓN ---
+
+        /**
+         * Inicializa la autenticación y establece el listener de estado.
+         */
+        async function startApp() {
+            if (!auth) return;
+
+            // Listener que se dispara cada vez que el estado de autenticación cambia
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('auth-status').classList.remove('bg-yellow-100');
+                    document.getElementById('auth-status').classList.add('bg-green-100', 'text-green-700');
+                    document.getElementById('auth-status').textContent = `Conectado como: ${userId}`;
+                    
+                    // Iniciar la carga de datos solo después de la autenticación
+                    loadProducts();
+                    loadOrders();
+
+                } else {
+                    document.getElementById('auth-status').classList.remove('bg-green-100');
+                    document.getElementById('auth-status').classList.add('bg-yellow-100', 'text-yellow-700');
+                    document.getElementById('auth-status').textContent = 'Estado: Desconectado. Los datos no se actualizarán.';
+                }
+            });
+
+            // Intentar iniciar sesión con el token de entorno o anónimamente
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("Autenticación con token personalizado exitosa.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Autenticación anónima exitosa.");
+                }
+            } catch (error) {
+                console.error("Error de autenticación inicial:", error);
+                document.getElementById('auth-status').textContent = 'Error de autenticación. Verifica la configuración de Firebase.';
+            }
+        }
+
+        // --- LÓGICA DE FIRESTORE: INVENTARIO (R/W) ---
+
+        /**
+         * Carga los productos en tiempo real.
+         */
+        function loadProducts() {
+            if (!userId) return;
+
+            const listContainer = document.getElementById('product-list');
+            const statusElement = document.getElementById('inventory-status');
+            const q = collection(db, getProductsCollectionPath());
+            
+            onSnapshot(q, (snapshot) => {
+                localProductList = [];
+                listContainer.innerHTML = '';
+
+                if (snapshot.empty) {
+                    listContainer.innerHTML = '<p class="text-center text-gray-500 p-4">Aún no hay productos en el inventario.</p>';
+                } else {
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        localProductList.push({ id: doc.id, ...data });
+                        listContainer.appendChild(createProductElement(doc.id, data));
+                    });
+                }
+                console.log(`Inventario cargado. Total de productos: ${localProductList.length}`);
+            }, (error) => {
+                console.error("Error al cargar productos:", error);
+                listContainer.innerHTML = `<p class="text-red-500 p-4">Error al cargar productos: ${error.message}.</p>`;
+            });
+        }
+
+        /**
+         * Crea el elemento HTML para un producto.
+         */
+        function createProductElement(id, data) {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center p-3 border border-gray-100 bg-white rounded-lg shadow-sm';
+            div.innerHTML = `
+                <div>
+                    <p class="font-semibold text-gray-800">${data.name}</p>
+                    <p class="text-sm text-gray-600">Precio/Detalle: <span class="text-indigo-600">${data.price}</span></p>
+                </div>
+                <button class="text-red-500 hover:text-red-700 p-1 rounded-full transition" onclick="deleteProduct('${id}')" title="Eliminar Producto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 6h6v10H7V6z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            return div;
+        }
+
+        /**
+         * Agrega un producto al inventario.
+         */
+        window.addProduct = async function() {
+            if (!userId) {
+                alert("Error: La autenticación no está lista. Recargue la página.");
+                return;
+            }
+
+            const name = document.getElementById('product-name').value.trim();
+            const price = document.getElementById('product-price').value.trim();
+
+            if (!name || !price) {
+                alert("Por favor, ingrese el nombre y el precio/detalle del producto.");
+                return;
+            }
+
+            try {
+                // Usamos doc(collection, name) para un ID legible, o addDoc para autogenerado. 
+                // Usaremos addDoc para evitar colisiones manuales.
+                await addDoc(collection(db, getProductsCollectionPath()), {
+                    name: name,
+                    price: price,
+                    timestamp: new Date().getTime()
+                });
+                document.getElementById('product-name').value = '';
+                document.getElementById('product-price').value = '';
+                console.log("Producto guardado con éxito.");
+
+            } catch (e) {
+                console.error("Error al guardar el producto: ", e);
+                alert("Error al guardar el producto. Verifique su conexión.");
+            }
+        }
+        
+        /**
+         * Elimina un producto.
+         */
+        window.deleteProduct = async function(id) {
+            if (!confirm("¿Estás seguro de que quieres eliminar este producto?")) return;
+
+            try {
+                await deleteDoc(doc(db, getProductsCollectionPath(), id));
+                console.log(`Producto ${id} eliminado.`);
+            } catch (e) {
+                console.error("Error al eliminar el producto: ", e);
+                alert("Error al eliminar el producto. Verifique su conexión.");
+            }
+        }
+
+        // --- LÓGICA DE FIRESTORE: PEDIDOS (LECTURA/BORRADO) ---
+
+        /**
+         * Carga los pedidos en tiempo real.
+         */
+        function loadOrders() {
+            if (!userId) return;
+
+            const listContainer = document.getElementById('order-list');
+            const q = collection(db, getOrdersCollectionPath());
+            
+            onSnapshot(q, (snapshot) => {
+                listContainer.innerHTML = '';
+
+                if (snapshot.empty) {
+                    listContainer.innerHTML = '<p class="text-center text-gray-500 p-4">No hay pedidos nuevos de clientes.</p>';
+                } else {
+                    // Muestra los pedidos del más nuevo al más antiguo
+                    const sortedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                        .sort((a, b) => b.timestamp - a.timestamp); 
+                        
+                    sortedOrders.forEach((order) => {
+                        listContainer.appendChild(createOrderElement(order));
+                    });
+                }
+            }, (error) => {
+                console.error("Error al cargar pedidos:", error);
+                listContainer.innerHTML = `<p class="text-red-500 p-4">Error al cargar pedidos: ${error.message}.</p>`;
+            });
+        }
+
+        /**
+         * Crea el elemento HTML para un pedido.
+         */
+        function createOrderElement(order) {
+            const date = new Date(order.timestamp).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+            const div = document.createElement('div');
+            div.className = 'p-4 border border-gray-200 bg-white rounded-lg shadow-md';
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">${order.source || 'Desconocido'}</span>
+                    <span class="text-xs text-gray-500">${date}</span>
+                </div>
+                <p class="text-gray-700 whitespace-pre-wrap">${order.text}</p>
+                <div class="mt-3 flex justify-end">
+                    <button class="text-sm text-red-500 hover:text-red-700 font-medium transition" onclick="deleteOrder('${order.id}')">
+                        Marcar como Leído/Eliminar
+                    </button>
+                </div>
+            `;
+            return div;
+        }
+
+        /**
+         * Elimina un pedido.
+         */
+        window.deleteOrder = async function(id) {
+            if (!confirm("¿Marcar este pedido como completado/leído y eliminarlo?")) return;
+
+            try {
+                await deleteDoc(doc(db, getOrdersCollectionPath(), id));
+                console.log(`Pedido ${id} eliminado.`);
+            } catch (e) {
+                console.error("Error al eliminar el pedido: ", e);
+                alert("Error al eliminar el pedido. Verifique su conexión.");
+            }
+        }
+        
+        // --- LÓGICA DE LA INTERFAZ Y CHATBOT (IA) ---
+
+        /**
+         * Cambia entre pestañas de gestión de datos.
+         */
+        window.showTab = function(tabName) {
+            const tabs = ['inventory', 'orders'];
+            tabs.forEach(tab => {
+                document.getElementById(`content-${tab}`).classList.toggle('hidden', tab !== tabName);
+                document.getElementById(`tab-${tab}`).classList.toggle('active', tab === tabName);
+            });
+        }
+
+        /**
+         * Agrega contenido al área de respuesta de la IA.
+         */
+        function setIaResponse(text) {
+            const area = document.getElementById('ia-response-area');
+            area.innerHTML = `<p class="whitespace-pre-wrap">${text}</p>`;
+        }
+
+        /**
+         * Copia el texto de la respuesta de la IA al portapapeles.
+         */
+        window.copyToClipboard = function() {
+            const textToCopy = document.getElementById('ia-response-area').textContent;
+            try {
+                // Uso de document.execCommand('copy') por compatibilidad en entornos iframe
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = textToCopy;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempTextArea);
+                alert("Respuesta copiada al portapapeles.");
+            } catch (err) {
+                console.error('No se pudo copiar el texto: ', err);
+                alert('Error al copiar el texto. Inténtalo manualmente.');
+            }
+        };
+
+        /**
+         * Llama a la API de Gemini para generar una respuesta basada en el inventario.
+         */
+        window.generateResponse = async function() {
+            if (!userId) {
+                setIaResponse("Error: La aplicación no está autenticada. Por favor, recargue la página.");
+                return;
+            }
+            
+            const prompt = document.getElementById('user-prompt').value.trim();
+            if (!prompt) {
+                alert("Por favor, ingresa tu consulta o mensaje.");
+                return;
+            }
+
+            document.getElementById('generate-response-btn').disabled = true;
+            document.getElementById('loading-indicator').classList.remove('hidden');
+            setIaResponse("");
+
+            // 1. INYECCIÓN DE DATOS DE INVENTARIO
+            let dataInjection = '';
+            if (localProductList.length > 0) {
+                const productDataString = localProductList
+                    .map(p => `- Producto: ${p.name}, Precio: ${p.price}`)
+                    .join('\n');
+
+                dataInjection = `\n\n--- INVENTARIO DISPONIBLE ---\n${productDataString}\n--------------------------\n\n`;
+            } else {
+                dataInjection = "\n\n--- INVENTARIO: VACÍO ---\n\n";
+            }
+            
+            // 2. CONSTRUCCIÓN DEL PROMPT FINAL
+            const systemPrompt = "Eres un asistente de negocios profesional y amigable. Tu tarea es redactar respuestas claras para clientes o procesar consultas internas. Utiliza el 'INVENTARIO DISPONIBLE' para citar precios exactos. Si la información no está en el inventario, usa la búsqueda de Google. Mantén un tono conciso y cortés.";
+            
+            const finalQuery = `CONSULTA INTERNA: ${prompt}\n${dataInjection}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: finalQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            // 3. LLAMADA A LA API CON BACKOFF EXPONENCIAL
+            let response = null;
+            let retries = 0;
+            const maxRetries = 5;
+
+            while (retries < maxRetries) {
+                try {
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        retries++;
+                        const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue; 
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    break; 
+                } catch (error) {
+                    console.error("Error en la solicitud de la API:", error);
+                    retries++;
+                    const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+
+            // 4. PROCESAR RESPUESTA
+            document.getElementById('loading-indicator').classList.add('hidden');
+            document.getElementById('generate-response-btn').disabled = false;
+
+            if (response && response.ok) {
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "Disculpa, no pude procesar tu solicitud.";
+                setIaResponse(text);
+            } else {
+                setIaResponse("Error: Problema de conexión con la IA. Intenta de nuevo.");
+            }
+        }
+
+        // Iniciar la aplicación en la carga de la ventana
+        window.onload = startApp;
+
+    </script>
+</body>
+</html>
