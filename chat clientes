@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot de Servicio al Cliente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f9;
+            /* Estilos para simular un widget incrustado */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 400px;
+            height: 600px;
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .message-area {
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            background-color: #fcfcfc;
+        }
+        .user-message {
+            max-width: 80%;
+            margin-left: auto;
+            background-color: #6366f1;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 12px 12px 2px 12px;
+            margin-bottom: 10px;
+        }
+        .bot-message {
+            max-width: 80%;
+            margin-right: auto;
+            background-color: #e5e7eb;
+            color: #1f2937;
+            padding: 8px 12px;
+            border-radius: 12px 12px 12px 2px;
+            margin-bottom: 10px;
+        }
+        .input-area {
+            border-top: 1px solid #e5e7eb;
+            padding: 1rem;
+            background-color: white;
+        }
+        .btn-action {
+            transition: all 0.2s;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Encabezado del Chatbot -->
+        <header class="bg-indigo-600 text-white p-4 flex items-center justify-between shadow-lg">
+            <h1 class="text-xl font-bold">Asistente de Ventas</h1>
+            <button id="order-mode-btn" class="bg-white text-indigo-600 text-sm font-semibold px-3 py-1 rounded-full hover:bg-indigo-50 transition btn-action" onclick="toggleOrderMode(true)">
+                Solicitar Pedido
+            </button>
+        </header>
+
+        <!-- Área de Mensajes -->
+        <div id="message-area" class="message-area">
+            <div class="bot-message">
+                ¡Hola! Soy tu asistente de ventas. Puedes preguntarme sobre **precios de productos** o hacer un **pedido** usando el botón de arriba.
+            </div>
+            <!-- Los mensajes se insertarán aquí -->
+        </div>
+
+        <!-- Área de Input -->
+        <div id="input-chat-mode" class="input-area">
+            <div class="flex space-x-2">
+                <input type="text" id="chat-input" class="w-full input-style p-3 rounded-xl focus:outline-none" placeholder="Pregunta sobre un producto...">
+                <button id="send-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white p-3 rounded-xl btn-action" onclick="handleSendMessage()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Área de Pedido -->
+        <div id="input-order-mode" class="input-area hidden">
+            <div id="order-form-container">
+                <p class="text-sm font-semibold text-gray-700 mb-2">Detalles del Pedido (Producto, Cantidad, Contacto):</p>
+                <textarea id="order-details-input" rows="3" class="textarea-style w-full p-3 rounded-xl focus:outline-none mb-2" placeholder="Ej: 2x Taza Cerámica, 1x Camiseta Talla M. Mi teléfono es 555-1234."></textarea>
+                <button id="place-order-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl transition btn-action" onclick="placeOrder()">
+                    Confirmar Pedido
+                </button>
+                <button class="w-full mt-2 text-sm text-gray-500 hover:text-gray-700" onclick="toggleOrderMode(false)">
+                    Volver al Chat
+                </button>
+            </div>
+            
+            <div id="order-loading" class="hidden text-center p-4">
+                <div class="animate-spin inline-block w-6 h-6 border-4 border-green-500 border-t-transparent rounded-full" role="status"></div>
+                <p class="text-green-600 mt-2">Guardando tu solicitud...</p>
+            </div>
+
+            <div id="order-success" class="hidden text-center p-4 bg-green-100 rounded-lg">
+                <p class="text-green-800 font-semibold">¡Pedido recibido!</p>
+                <p class="text-sm text-green-700">Pronto nos pondremos en contacto contigo.</p>
+                <button class="w-full mt-2 text-sm text-green-500 hover:text-green-700" onclick="toggleOrderMode(false); document.getElementById('order-details-input').value = ''">
+                    Continuar Chateando
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Script de Firebase y Lógica de la Aplicación -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        setLogLevel('Debug');
+
+        // Variables Globales
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const apiKey = ""; 
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        
+        let localProductList = []; 
+        let authReady = false;
+        
+        // Inicialización de Firebase
+        let app, db, auth;
+        
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            console.log("Firebase inicializado con éxito.");
+        } catch (error) {
+            console.error("Error al inicializar Firebase:", error);
+        }
+
+        /**
+         * Inicializa la autenticación anónima y carga el inventario.
+         */
+        async function startChatbotApp() {
+            try {
+                // Autenticación anónima para usuarios públicos
+                await signInAnonymously(auth);
+                
+                // CRITICAL: Verificamos que se haya obtenido el usuario anónimo.
+                if (auth.currentUser) {
+                    authReady = true;
+                    console.log("Sesión anónima iniciada. UID para lectura pública:", auth.currentUser.uid); 
+                    loadProducts(); 
+                } else {
+                     // Si signInAnonymously resuelve sin usuario, forzamos un error para el catch.
+                     throw new Error("Anonymous sign-in failed to provide user object.");
+                }
+            } catch (error) {
+                console.error("Error de autenticación anónima:", error);
+                authReady = false;
+                appendBotMessage("Lo siento, no puedo conectarme con la base de datos de productos. Por favor, asegúrate de que tu herramienta interna ('index.html') haya iniciado sesión correctamente.");
+            }
+        }
+
+        // --- LÓGICA DE FIRESTORE: INVENTARIO (LECTURA) ---
+
+        function getProductsCollectionPath() {
+            // RUTA PÚBLICA: Debe coincidir con la app interna para leer los precios.
+            return `artifacts/${appId}/public/data/inventory_products`;
+        }
+
+        function getOrdersCollectionPath() {
+            // RUTA PÚBLICA: Debe coincidir con la app interna para guardar los pedidos.
+            return `artifacts/${appId}/public/data/client_orders`;
+        }
+        
+        /**
+         * Carga los productos en tiempo real (onSnapshot).
+         */
+        function loadProducts() {
+            // CORRECCIÓN: Se añade la verificación explícita de auth.currentUser
+            if (!authReady || !auth.currentUser) return; 
+
+            const collectionPath = getProductsCollectionPath();
+            const q = collection(db, collectionPath);
+            
+            onSnapshot(q, (snapshot) => {
+                const products = [];
+                snapshot.forEach((doc) => {
+                    products.push({ id: doc.id, ...doc.data() });
+                });
+                
+                localProductList = products;
+                console.log(`Inventario cargado. Total de productos: ${products.length}`);
+                
+                if(products.length === 0 && document.getElementById('message-area').children.length === 1) {
+                    appendBotMessage("Aún no tenemos productos en el inventario. Por favor, vuelve más tarde.");
+                }
+
+            }, (error) => {
+                console.error("Error al escuchar cambios en productos:", error);
+                // Proporcionar un mensaje más útil para el error de permisos.
+                let errorMessage = "Error al cargar el inventario. La información de precios podría no estar disponible.";
+                if (error.message && error.message.includes('Missing or insufficient permissions')) {
+                     errorMessage = "Error de permiso: El chatbot no puede acceder a la lista de precios. Asegúrate de que tu herramienta interna ('index.html') esté abierta y con una sesión iniciada para establecer los permisos.";
+                }
+                appendBotMessage(errorMessage);
+            });
+        }
+
+        // --- LÓGICA DE CHATBOT (IA) ---
+
+        /**
+         * Añade un mensaje al área de chat.
+         */
+        function appendMessage(text, isUser = false) {
+            const area = document.getElementById('message-area');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = isUser ? 'user-message' : 'bot-message';
+            msgDiv.textContent = text;
+            area.appendChild(msgDiv);
+            // Hacer scroll al último mensaje
+            area.scrollTop = area.scrollHeight; 
+        }
+
+        function appendBotMessage(text) {
+            appendMessage(text, false);
+        }
+        
+        function appendUserMessage(text) {
+            appendMessage(text, true);
+        }
+
+        /**
+         * Cambia entre el modo de chat y el modo de pedido.
+         */
+        window.toggleOrderMode = function(isOrderMode) {
+            document.getElementById('input-chat-mode').classList.toggle('hidden', isOrderMode);
+            document.getElementById('input-order-mode').classList.toggle('hidden', !isOrderMode);
+            document.getElementById('order-mode-btn').classList.toggle('bg-gray-200', isOrderMode);
+            document.getElementById('order-mode-btn').classList.toggle('text-indigo-600', !isOrderMode);
+            document.getElementById('order-mode-btn').classList.toggle('bg-white', !isOrderMode);
+            document.getElementById('order-mode-btn').textContent = isOrderMode ? 'Volver al Chat' : 'Solicitar Pedido';
+
+            document.getElementById('order-form-container').classList.remove('hidden');
+            document.getElementById('order-success').classList.add('hidden');
+            document.getElementById('order-loading').classList.add('hidden');
+        }
+
+        /**
+         * Maneja el envío del mensaje del cliente a la IA.
+         */
+        window.handleSendMessage = async function() {
+            const chatInput = document.getElementById('chat-input');
+            const prompt = chatInput.value.trim();
+            if (!prompt) return;
+
+            appendUserMessage(prompt);
+            chatInput.value = '';
+            chatInput.disabled = true;
+            document.getElementById('send-btn').disabled = true;
+
+            // Mostrar "escribiendo..."
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'bot-message flex items-center';
+            typingIndicator.innerHTML = '<div class="animate-pulse w-3 h-3 bg-gray-400 rounded-full mr-1"></div><div class="animate-pulse w-3 h-3 bg-gray-400 rounded-full mr-1" style="animation-delay: 0.2s;"></div><div class="animate-pulse w-3 h-3 bg-gray-400 rounded-full" style="animation-delay: 0.4s;"></div>';
+            document.getElementById('message-area').appendChild(typingIndicator);
+            document.getElementById('message-area').scrollTop = document.getElementById('message-area').scrollHeight; 
+            
+            // 1. INYECCIÓN DE DATOS DE INVENTARIO
+            let dataInjection = '';
+            if (localProductList.length > 0) {
+                const productDataString = localProductList
+                    .map(p => `- Producto: ${p.name}, Precio: $${p.price}`)
+                    .join('\n');
+
+                dataInjection = `\n\n--- INVENTARIO DISPONIBLE ---\n${productDataString}\n--------------------------\n\n`;
+            }
+            
+            // 2. CONSTRUCCIÓN DEL PROMPT FINAL
+            const systemPrompt = "Eres un chatbot de servicio al cliente amable, rápido y profesional. Tu objetivo es responder preguntas de precios usando la lista de 'INVENTARIO DISPONIBLE' y guiar al cliente para que haga un pedido. Si te preguntan por un precio, dales el precio exacto. Si te preguntan por otra cosa, usa la búsqueda de Google. Si el cliente expresa interés en comprar o hacer un pedido, anímalo a usar el botón 'Solicitar Pedido' y explica brevemente cómo usarlo.";
+            
+            const finalQuery = `PREGUNTA DEL CLIENTE: ${prompt}\n${dataInjection}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: finalQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            // 3. LLAMADA A LA API CON BACKOFF EXPONENCIAL
+            let response = null;
+            let retries = 0;
+            const maxRetries = 5;
+
+            while (retries < maxRetries) {
+                try {
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        retries++;
+                        const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue; 
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    break; 
+                } catch (error) {
+                    console.error("Error en la solicitud de la API:", error);
+                    retries++;
+                    const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+
+            // 4. PROCESAR RESPUESTA
+            document.getElementById('message-area').removeChild(typingIndicator);
+            chatInput.disabled = false;
+            document.getElementById('send-btn').disabled = false;
+            chatInput.focus();
+
+            if (response && response.ok) {
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "Disculpa, no pude procesar tu solicitud. ¿Podrías intentar preguntar de otra manera?";
+                appendBotMessage(text);
+            } else {
+                appendBotMessage("Lo siento, estoy teniendo problemas de conexión con el servidor. Por favor, intenta de nuevo en un momento.");
+            }
+        }
+        
+        // Manejar Enter para enviar el mensaje
+        document.getElementById('chat-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+            }
+        });
+
+        // --- LÓGICA DE PEDIDO (ESCRITURA) ---
+        
+        window.placeOrder = async function() {
+            const orderDetails = document.getElementById('order-details-input').value.trim();
+
+            if (!authReady || !auth.currentUser) {
+                appendBotMessage("Error: La aplicación no ha podido iniciar sesión anónima para registrar tu pedido. Por favor, intenta de nuevo o contacta al negocio por otro medio.");
+                return;
+            }
+
+            if (orderDetails === "") {
+                appendBotMessage("Por favor, ingresa los detalles de tu pedido (productos, cantidades, y un método de contacto).");
+                return;
+            }
+
+            // Mostrar carga
+            document.getElementById('order-form-container').classList.add('hidden');
+            document.getElementById('order-loading').classList.remove('hidden');
+
+            const collectionPath = getOrdersCollectionPath();
+
+            try {
+                await addDoc(collection(db, collectionPath), {
+                    text: orderDetails,
+                    client_id: auth.currentUser.uid, // ID de sesión anónima del cliente
+                    source: "Chatbot Cliente",
+                    timestamp: new Date().getTime()
+                });
+                
+                // Mostrar éxito
+                document.getElementById('order-loading').classList.add('hidden');
+                document.getElementById('order-success').classList.remove('hidden');
+                appendBotMessage("¡Gracias! Tu solicitud de pedido ha sido guardada. Nos pondremos en contacto contigo pronto para finalizar la compra.");
+
+            } catch (e) {
+                console.error("Error al guardar el pedido: ", e);
+                document.getElementById('order-loading').classList.add('hidden');
+                document.getElementById('order-form-container').classList.remove('hidden');
+                appendBotMessage("Lo sentimos, hubo un error al guardar tu pedido. Por favor, intenta de nuevo.");
+            }
+        }
+        
+        // Inicializar la aplicación
+        startChatbotApp();
+
+    </script>
+</body>
+</html>
